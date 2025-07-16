@@ -48,6 +48,7 @@ This repository implements a pipeline to compute a Financial Risk Measure (FRM) 
 ```
 .
 ├── data/
+│   └── crypto/                       # folder with raw crypto data
 │   ├── monthly_log_returns.csv       # Monthly returns obtained after running crypto_prep.py
 │   └── monthly_volumes.csv           # Monthly volumes obtained after running crypto_prep.py
 │
