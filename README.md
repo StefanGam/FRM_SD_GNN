@@ -1,6 +1,6 @@
 # FRM–SD Network Analysis for Cryptocurrencies
 
-This repository implements a pipeline to compute a Financial Risk Measure (FRM) for cryptocurrencies using penalized quantile‐lasso, construct monthly Stochastic Dominance (SD) networks from FRM signals, extract network‐centrality features, build a network‐risk factor, and evaluate its performance via Fama–French‐style regressions.
+This repository implements a pipeline to compute a Financial Risk Measure (FRM) for cryptocurrencies using penalized quantile-lasso, construct monthly Stochastic Dominance (SD) networks from FRM signals, extract network-centrality features, build a network-risk factor, and evaluate its performance via Fama–French-style regressions.
 
 ---
 
@@ -38,7 +38,7 @@ This repository implements a pipeline to compute a Financial Risk Measure (FRM) 
    All results are saved in `outputs/`:
    - `NetworkRisk.csv` — H–L factor series  
    - `frm_lambdas.csv` — monthly FRM λ values  
-   - `centralities.csv` — in‐degree, out‐degree, PageRank, eigenvector  
+   - `centralities.csv` — in-degree, out-degree, PageRank, eigenvector  
    - `econ_results.csv` — regression coefficients & summary stats  
 
 ---
@@ -52,12 +52,12 @@ This repository implements a pipeline to compute a Financial Risk Measure (FRM) 
 │
 ├── analysis/
 │   ├── crypto_prep.py         # Load & resample crypto data
-│   ├── frm_asgl.py            # Quantile‐lasso FRM λ estimation
+│   ├── frm_asgl.py            # Quantile-lasso FRM λ estimation
 │   ├── sd_utils.py            # Nonparametric SD tests
 │   ├── sd_network.py          # Build scalar SD networks
-│   ├── factor.py              # High–Low network‐risk factor
+│   ├── factor.py              # High–Low network-risk factor
 │   ├── features.py            # Prepare centrality features
-│   └── econ_test.py           # Fama–French‐style regressions
+│   └── econ_test.py           # Fama–French-style regressions
 │
 ├── config.yml                 # Pipeline parameters
 ├── run_crypto.py              # Driver script for crypto pipeline
@@ -69,29 +69,28 @@ This repository implements a pipeline to compute a Financial Risk Measure (FRM) 
 ## 🧮 Methodology Overview
 
 1. **Compute FRM λ**  
-   \[
-     \lambda_{i,t}
-     = \min \{\lambda \mid eta_j(\lambda)=0,\ orall j\neq i\}
-   \]
+   ```
+   λ_{i,t} = min { λ | β_j(λ) = 0 for all j ≠ i }
+   ```
 
 2. **Construct scalar SD network**  
-   Edge \(i \to j\) if \(\lambda_{i,t} > \lambda_{j,t}\).
+   ```
+   Edge i → j if λ_{i,t} > λ_{j,t}
+   ```
 
 3. **Extract centralities**  
-   In‐degree, out‐degree, PageRank, eigenvector.
+   In-degree, out-degree, PageRank, eigenvector.
 
 4. **Build NetworkRisk factor**  
-   \[
-     \text{NetworkRisk}_t
-     = \overline{R}_{\text{High},t}
-     - \overline{R}_{\text{Low},t}
-   \]
+   ```
+   NetworkRisk_t = Avg(Returns of top-3 cryptos by eigenvector)
+                 - Avg(Returns of bottom-3 cryptos by eigenvector)
+   ```
 
 5. **Evaluate via regressions**  
-   \[
-     r_{i,t} - r_{f,t}
-     = \alpha_i + \beta_i\,\text{NetworkRisk}_t + \varepsilon_{i,t}
-   \]
+   ```
+   (r_{i,t} - r_{f,t}) = α_i + β_i * NetworkRisk_t + ε_{i,t}
+   ```
 
 ---
 
