@@ -224,11 +224,13 @@ def main():
         out_path=cfg["factor_output"]
     )
 
-    # --- 6. Performance/Econ test ---
+    # --- 6. Performance/Econ test (use the SAME sliced returns) ---
     from analysis.econ_test import run_econ_test
+    sliced_returns_path = outputs / "returns_sliced.csv"
+    returns.to_csv(sliced_returns_path)
     run_econ_test(
         factor_path=cfg["factor_output"],
-        returns_path=cfg["returns_path"],
+        returns_path=str(sliced_returns_path),
         out_dir="outputs"
     )
 

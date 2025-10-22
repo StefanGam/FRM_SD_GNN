@@ -2,22 +2,40 @@ import pandas as pd
 import numpy as np
 
 def build_HL_factor(
-    centrality_df,      # DataFrame: index=dates, columns="<metric>_<asset>"
-    returns_df,         # DataFrame: index=dates, columns=assets
-    metric='eigenvector',   # 'in_degree', 'out_degree', 'pagerank', 'eigenvector'
+    centrality_df,
+    returns_df,
+    metric='eigenvector',
     top_n=3,
     bottom_n=3,
     out_path="outputs/NetworkRisk.csv"
 ):
     """
     For each period:
-        1. Extract centrality scores for 'metric' for all assets.
-        2. Rank assets by centrality.
-        3. Take top_n and bottom_n assets.
-        4. Compute equal-weighted return of each group.
-        5. Factor = High - Low.
-    Includes debugging/logging to diagnose missing values.
+        1) rank assets by centrality; 2) long top_n, short bottom_n; 3) factor = H - L.
     """
+
+    # --- normalize indices (tz-naive) and align on common dates ---
+    returns_df.index = pd.to_datetime(returns_df.index)
+    try:
+        returns_df.index = returns_df.index.tz_localize(None)
+    except AttributeError:
+        pass
+
+    centrality_df.index = pd.to_datetime(centrality_df.index)
+    try:
+        centrality_df.index = centrality_df.index.tz_localize(None)
+    except AttributeError:
+        pass
+
+    common = returns_df.index.intersection(centrality_df.index)
+    if len(common) == 0:
+        print("[HL-Factor] No overlapping dates between centrality and returns; nothing to do.")
+        pd.Series([], name="NetworkRisk").to_csv(out_path)
+        return
+
+    centrality_df = centrality_df.loc[common].sort_index()
+    returns_df    = returns_df.loc[common].sort_index()
+
     metric_cols = [c for c in centrality_df.columns if c.endswith("_" + metric) or c.startswith(metric + "_")]
     if not metric_cols:
         print("Available columns:", centrality_df.columns.tolist())

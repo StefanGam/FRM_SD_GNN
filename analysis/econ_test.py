@@ -21,21 +21,26 @@ def run_econ_test(
 
     # Guess frequency for Sharpe ratio
     if annualization is None:
-        inferred = pd.infer_freq(factor.index)
+        try:
+            inferred = pd.infer_freq(factor.index)
+        except Exception:
+            inferred = None
+
         if inferred is None:
-            # Fallback: guess by median days between obs
-            # ≤2 days  -> treat as daily (252)
-            # ≤8 days  -> weekly (52)
-            # otherwise -> monthly (12)
-            median_delta = np.median(
-                np.diff(factor.index.values).astype("timedelta64[D]").astype(int)
-            )
-            if median_delta <= 2:
+            # If too few dates, default to daily
+            if len(factor.index) < 3:
                 annualization = 252
-            elif median_delta <= 8:
-                annualization = 52
             else:
-                annualization = 12
+                # Fallback by median spacing
+                median_delta = np.median(
+                    np.diff(factor.index.values).astype("timedelta64[D]").astype(int)
+                )
+                if median_delta <= 2:
+                    annualization = 252
+                elif median_delta <= 8:
+                    annualization = 52
+                else:
+                    annualization = 12
         elif inferred[0] == "D":
             annualization = 252
         elif inferred[0] == "W":
