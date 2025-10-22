@@ -1,34 +1,56 @@
-# FRM_SD_GNN configuration file
+# ===============================
+# Runtime mode
+# ===============================
+universe: crypto            # currently only 'crypto' is auto-built
+frequency: daily            # options: daily | weekly | monthly
 
-# Data frequency and rolling window
-frequency: monthly          # Options: 'monthly' or 'weekly'
-window: 12                  # Rolling window size (12 months or 52 weeks, etc.)
-step: 1                     # Step size for rolling window
+crypto:
+  folder: data/cryptos      # where bitcoin.csv, litecoin.csv, etc. live
+week_ending: SUN            # used only when frequency: weekly (SUN, MON, ..., SAT)
 
-# Paths to preprocessed data
-returns_path: data/monthly_log_returns.csv   # Or data/weekly_log_returns.csv if freq is weekly
-volumes_path: data/monthly_volumes.csv       # Or data/weekly_volumes.csv if freq is weekly
+# Direct path to precomputed returns
+returns_path: data/daily_log_returns.csv
 
-# FRM-ASGL quantile regression parameters
-tau: 0.05
-lambda_grid: [0.001, 0.01, 0.1, 1, 10]
+# If you want to provide your own returns file instead of auto-building:
+# Uncomment the line below and point to the desired CSV (e.g., daily_log_returns.csv)
+# returns_path: data/daily_log_returns.csv
 
-# Bootstrap (set to 0 for scalar SD network, or >0 for stochastic dominance with bootstrapping)
-bootstrap: 0
+# ===============================
+# FRM / Quantile-Lasso settings
+# ===============================
+window: 30                  # rolling window length (63 ≈ 3 months of daily data)
+step: 1                     # advance by 1 day each step
+tau: 0.05                   # quantile for λ
+lambda_grid: [0.1, 0.2, 0.5, 1.0]
+n_folds: 2                  # cross-validation folds inside FRM
+n_jobs: 8                   # parallelism (CLI --n_jobs can override)
 
-# Network centrality/factor construction
-centrality_metric: eigenvector    # 'indegree', 'outdegree', 'pagerank', or 'eigenvector'
-factor_high: 1                   # Number of assets in High-centrality portfolio
-factor_low: 1                    # Number of assets in Low-centrality portfolio
+# ===============================
+# SD / Network Factor settings
+# ===============================
+centrality_metric: eigenvector   # eigenvector | pagerank | indegree | outdegree
+factor_high: 3                   # top-K assets for long leg
+factor_low: 3                    # bottom-K assets for short leg
+factor_output: outputs/NetworkRisk_daily.csv   # output path for H–L factor series
 
-# Output locations
-lambda_outputs: outputs/lambda_estimates.csv
-network_outputs: outputs/networks/               # Directory for network graphs/adjacency
-centrality_outputs: outputs/centralities.csv
-factor_output: outputs/NetworkRisk.csv
+sd:
+  method: distributional            # "scalar" for simple dominance; "distributional" for full SD tests
+  order: 1                  # SD order (1 or 2) if distributional
+  lookback: 30             # how many λ-days form the empirical distribution
+  alpha: 0.05               # significance level
+  mht: fdr_bh               # multiple testing correction (none | fdr_bh)
+  pval: perm                # permutation ("perm") or one-sided KS ("ks", SD1 only)
+  perm_B: 200               # bootstrap/permutation repetitions
 
-# Regression/factor test settings
-regression_window: 30            # Number of rolling periods for factor regressions (optional)
+# ===============================
+# Fast-test time window (optional)
+# ===============================
+test_window:
+  # Choose exactly ONE of the following approaches:
+  # 1) Keep only the last N rows (daily or weekly):
+  last_days: 90             # use when frequency: daily
+  # last_weeks: 8           # use when frequency: weekly
 
-
-n_jobs: 8
+  # 2) Explicit calendar range (works for any frequency, incl. monthly):
+  # start: 2025-08-01
+  # end:   2025-10-01

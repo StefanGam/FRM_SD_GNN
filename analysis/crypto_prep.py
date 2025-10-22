@@ -73,10 +73,17 @@ def get_returns_and_volumes(top_n=15, folder="data/cryptos/", start_date='2019/0
         price_agg = prices.resample("W-FRI").last()
         vol_agg = volumes.resample("W-FRI").sum()
         fname_r, fname_v = "weekly_log_returns.csv", "weekly_volumes.csv"
+    elif freq == "D":
+        # already daily (crypto trades 7 days/week)
+        price_agg = prices
+        vol_agg = volumes
+        fname_r, fname_v = "daily_log_returns.csv", "daily_volumes.csv"
     else:
-        raise ValueError("freq must be 'M' (monthly) or 'W' (weekly)")
+        raise ValueError("freq must be 'M' (monthly), 'W' (weekly), or 'D' (daily)")
 
-    log_returns = np.log(price_agg / price_agg.shift(1))
+    # Daily/Weekly/Monthly log-returns
+    log_returns = np.log(price_agg).diff() if freq == "D" else np.log(price_agg / price_agg.shift(1))
+    # keep rows on/after start_date and drop first diff row
     log_returns = log_returns.loc[log_returns.index >= start_date].iloc[1:]
     vol_agg = vol_agg.loc[log_returns.index]
 
@@ -101,7 +108,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--top_n', type=int, default=15, help="Number of assets with longest history")
     parser.add_argument('--start_date', type=str, default='2019/01/01', help="Earliest date to include (YYYY/MM/DD or YYYY-MM-DD)")
-    parser.add_argument('--freq', type=str, default='M', help="Aggregation frequency: 'M' for monthly, 'W' for weekly")
+    parser.add_argument('--freq', type=str, default='M',
+                        help="Aggregation frequency: 'M' monthly, 'W' weekly, 'D' daily")
     args = parser.parse_args()
     get_returns_and_volumes(top_n=args.top_n, start_date=args.start_date, freq=args.freq.upper())
 

@@ -21,18 +21,26 @@ def run_econ_test(
 
     # Guess frequency for Sharpe ratio
     if annualization is None:
-        # Use pandas offset alias
         inferred = pd.infer_freq(factor.index)
         if inferred is None:
             # Fallback: guess by median days between obs
-            median_delta = np.median(np.diff(factor.index.values).astype('timedelta64[D]').astype(int))
-            if median_delta <= 8:
+            # ≤2 days  -> treat as daily (252)
+            # ≤8 days  -> weekly (52)
+            # otherwise -> monthly (12)
+            median_delta = np.median(
+                np.diff(factor.index.values).astype("timedelta64[D]").astype(int)
+            )
+            if median_delta <= 2:
+                annualization = 252
+            elif median_delta <= 8:
                 annualization = 52
             else:
                 annualization = 12
-        elif inferred[0] == 'W':
+        elif inferred[0] == "D":
+            annualization = 252
+        elif inferred[0] == "W":
             annualization = 52
-        elif inferred[0] == 'M':
+        elif inferred[0] == "M":
             annualization = 12
         else:
             annualization = 12  # Default to monthly
@@ -64,15 +72,16 @@ def run_econ_test(
         if len(y) < 10:
             results.append({"Asset": col, "Beta": np.nan, "t-stat": np.nan, "p-value": np.nan, "N": len(y)})
             continue
-        x_ = np.vstack([np.ones_like(x), x]).T
+        x_ = np.vstack([np.ones_like(x), x]).T  # columns: [const, factor]
         try:
-            beta, alpha = np.linalg.lstsq(x_, y, rcond=None)[0]
+            alpha, beta = np.linalg.lstsq(x_, y, rcond=None)[0]  # <- alpha first, beta second
             y_pred = alpha + beta * x
             residuals = y - y_pred
             s_err = np.sqrt(np.sum(residuals ** 2) / (len(y) - 2))
             s_beta = s_err / np.sqrt(np.sum((x - x.mean()) ** 2))
             t_beta = beta / s_beta if s_beta > 0 else np.nan
             p_beta = 2 * (1 - stats.t.cdf(abs(t_beta), df=len(y) - 2)) if not np.isnan(t_beta) else np.nan
+
             results.append({
                 "Asset": col,
                 "Beta": beta,
