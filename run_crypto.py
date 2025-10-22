@@ -6,13 +6,19 @@ Full pipeline runner for FRM/SD/Factor analysis on cryptos (monthly/weekly).
 Avoids recomputation: saves/loads lambda matrices and SD networks for fast reruns!
 """
 
-from pathlib import Path
-import yaml
-import pickle
-import numpy as np
-import pandas as pd
-import argparse
+
 import os
+import argparse, yaml, pickle
+from pathlib import Path
+import pandas as pd
+import numpy as np
+
+# progress bar
+try:
+    from tqdm.auto import tqdm
+except Exception:
+    def tqdm(x, **kw):  # fallback no-op if tqdm missing
+        return x
 
 def main():
     # --- CLI and config ---
@@ -57,6 +63,14 @@ def main():
         returns = returns.tail(int(last_days))
         print(f"[INFO] Sliced to last {last_days} rows (daily config) → {len(returns)} rows")
 
+    # Normalize timezones to tz-naive everywhere
+    returns.index = pd.to_datetime(returns.index)
+    try:
+        returns.index = returns.index.tz_localize(None)
+    except AttributeError:
+        # already tz-naive
+        pass
+
     ret_log = returns.copy()
     print("Data periods:", len(ret_log), "| Rolling window:", cfg["window"])
     print("ret_log shape:", ret_log.shape, ", window:", cfg["window"])
@@ -94,8 +108,18 @@ def main():
             # Save empty placeholders so reload doesn't loop forever
             full_lambda_mat = pd.DataFrame()
             frm_idx = pd.DataFrame()
+            # Make λ and FRM indices tz-naive for consistency with returns
+            full_lambda_mat.index = pd.to_datetime(full_lambda_mat.index)
+            frm_idx.index = pd.to_datetime(frm_idx.index)
+            try:
+                full_lambda_mat.index = full_lambda_mat.index.tz_localize(None)
+                frm_idx.index = frm_idx.index.tz_localize(None)
+            except AttributeError:
+                pass
+
             full_lambda_mat.to_pickle(lambda_path)
             frm_idx.to_pickle(frm_idx_path)
+
             return
 
         # Save outputs as pickle for fast reload
@@ -134,18 +158,22 @@ def main():
         network_list = []
 
         if sd_mode == "distributional":
-            # Build per-date λ distributions from trailing lookback window
-            for t, (date, row_today) in enumerate(full_lambda_mat.iterrows()):
+            # Per-date λ-distributions from trailing lookback window
+            dates = full_lambda_mat.index
+            for t in tqdm(range(len(dates)), total=len(dates), desc="SD networks"):
+                date = dates[t]
                 start = max(0, t - lookback + 1)
                 hist = full_lambda_mat.iloc[start:t + 1]  # lookback × assets
-                # For each asset, pass an array of λ's (dropna)
+                # Each asset gets an array of λ's (drop NaNs)
                 sample_series = hist.apply(lambda col: col.dropna().values, axis=0)
-                # dominance_graph_single will detect arrays and run SD tests via sd_utils
-                G = dominance_graph_single(sample_series, s=s_order, alpha=alpha, method=pmethod, B=perm_B)
+                # dominance_graph_single detects arrays and runs SD tests via sd_utils
+                G = dominance_graph_single(
+                    sample_series, s=s_order, alpha=alpha, method=pmethod, B=perm_B
+                )
                 network_list.append((date, G))
         else:
             # Fast scalar fallback (edge i->j if lambda_i > lambda_j)
-            for date, row in full_lambda_mat.iterrows():
+            for date, row in tqdm(full_lambda_mat.iterrows(), total=len(full_lambda_mat), desc="SD networks"):
                 G = dominance_graph_single(row)
                 network_list.append((date, G))
 
@@ -163,15 +191,26 @@ def main():
     centralities = []
     for date, G in network_list:
         cent = compute_graph_centralities(G)
-        flat = {f"{asset}_{metric}": val for metric, asset_dict in cent.items() for asset, val in asset_dict.items()}
-        flat['Date'] = date
+        flat = {f"{asset}_{metric}": val
+                for metric, asset_dict in cent.items()
+                for asset, val in asset_dict.items()}
+        # force tz-naive date for alignment with returns
+        d = pd.Timestamp(date)
+        if d.tzinfo is not None:
+            d = d.tz_convert("UTC").tz_localize(None)
+        flat['Date'] = d
         centralities.append(flat)
 
     if not centralities:
         print("[WARN] No networks / centralities computed. Skipping factor and econ tests.")
         return
 
-    centrality_df = pd.DataFrame(centralities).set_index("Date")
+    centrality_df = pd.DataFrame(centralities).set_index("Date").sort_index()
+    centrality_df.index = pd.to_datetime(centrality_df.index)
+    try:
+        centrality_df.index = centrality_df.index.tz_localize(None)
+    except AttributeError:
+        pass
     centrality_df.to_csv(outputs / "centralities.csv")
 
     # --- 5. Factor construction ---
