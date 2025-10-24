@@ -55,6 +55,13 @@ def build_HL_factor(
         scores = metric_matrix.loc[date]
         scores = scores.dropna()
         print(f"[HL-Factor] {date.date()}: {len(scores)} assets with valid {metric} centrality.")
+        
+        # Check if all centralities are zero (no network activity)
+        if scores.sum() == 0.0:
+            print(f"  [Skip] All {metric} centralities are zero - no network activity")
+            factor_list.append(np.nan)
+            continue
+            
         if len(scores) < top_n + bottom_n:
             print(f"  [Skip] Not enough assets to build H-L factor (needed {top_n + bottom_n}, found {len(scores)})")
             factor_list.append(np.nan)

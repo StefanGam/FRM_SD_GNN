@@ -32,7 +32,8 @@ def main():
     # --- Load config ---
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
-    outputs = Path("outputs")
+    # Output directory from config (with fallback)
+    outputs = Path(cfg.get("out_dir", "outputs"))
     outputs.mkdir(exist_ok=True)
 
     # --- Data path setup ---
@@ -51,8 +52,8 @@ def main():
     last_weeks = tw.get("last_weeks")
 
     if start or end:
-        start_dt = pd.to_datetime(start) if start else returns.index.min()
-        end_dt = pd.to_datetime(end) if end else returns.index.max()
+        start_dt = pd.to_datetime(start).tz_localize('UTC') if start else returns.index.min()
+        end_dt = pd.to_datetime(end).tz_localize('UTC') if end else returns.index.max()
         returns = returns.loc[(returns.index >= start_dt) & (returns.index <= end_dt)]
         print(
             f"[INFO] Sliced by date range to {returns.index.min():%Y-%m-%d} .. {returns.index.max():%Y-%m-%d} ({len(returns)} rows)")
@@ -146,6 +147,7 @@ def main():
     if with_network or not networks_path.exists():
         print("[INFO] Computing and saving SD networks...")
         from analysis.sd_network import dominance_graph_single
+        import networkx as nx
 
         sd_cfg = cfg.get("sd", {}) or {}
         sd_mode = sd_cfg.get("method", "scalar").lower()  # "scalar" | "distributional"
@@ -154,22 +156,76 @@ def main():
         lookback = int(sd_cfg.get("lookback", 126))
         pmethod = sd_cfg.get("pval", "perm")  # "perm" or "ks"
         perm_B = int(sd_cfg.get("perm_B", 200))
+        
+        # New advanced SD test options
+        test_mode = sd_cfg.get("test_mode", "pysdtest")  # strict | pysdtest | epsilon | left_tail | bootstrap_prob
+        epsilon = float(sd_cfg.get("epsilon", 0.005))
+        alpha_tail = float(sd_cfg.get("alpha_tail", 0.20))
+        keep_threshold = float(sd_cfg.get("keep_threshold", 0.60))
+        bootstrap_B = int(sd_cfg.get("bootstrap_B", 1000))
+        block_len = int(sd_cfg.get("block_len", 10))
+        ngrid = int(sd_cfg.get("ngrid", 200))
+        resampling = sd_cfg.get("resampling", "bootstrap")
+        random_state = sd_cfg.get("random_state", 42)
 
         network_list = []
 
         if sd_mode == "distributional":
+            # Import the new SD functions
+            from analysis.sd_utils import sd_pairwise_network
+            
             # Per-date λ-distributions from trailing lookback window
             dates = full_lambda_mat.index
             for t in tqdm(range(len(dates)), total=len(dates), desc="SD networks"):
                 date = dates[t]
                 start = max(0, t - lookback + 1)
+                
+                # Skip periods without full lookback window to avoid degenerate distributions
+                if t < lookback - 1:
+                    # Not enough history for proper empirical distributions
+                    G = nx.DiGraph()  # Empty network
+                    network_list.append((date, G))
+                    continue
+                    
                 hist = full_lambda_mat.iloc[start:t + 1]  # lookback × assets
-                # Each asset gets an array of λ's (drop NaNs)
-                sample_series = hist.apply(lambda col: col.dropna().values, axis=0)
-                # dominance_graph_single detects arrays and runs SD tests via sd_utils
-                G = dominance_graph_single(
-                    sample_series, s=s_order, alpha=alpha, method=pmethod, B=perm_B
+                
+                # Use the new sd_pairwise_network function with advanced options
+                result = sd_pairwise_network(
+                    hist,  # DataFrame with dates as rows, assets as columns
+                    order=s_order,
+                    mode=test_mode,
+                    # Common parameters
+                    ngrid=ngrid,
+                    alpha=alpha,
+                    # PySDTest parameters
+                    resampling=resampling,
+                    nboot=perm_B,
+                    quiet=True,
+                    # Mode-specific parameters
+                    epsilon=epsilon,
+                    alpha_tail=alpha_tail,
+                    keep_threshold=keep_threshold,
+                    B=bootstrap_B,
+                    block_len=block_len,
+                    random_state=random_state
                 )
+                
+                # Convert adjacency matrix to NetworkX graph
+                A = result["A"]
+                G = nx.DiGraph()
+                G.add_nodes_from(A.index)
+                
+                # Add edges based on adjacency matrix
+                for i in A.index:
+                    for j in A.columns:
+                        if i != j and A.loc[i, j] == 1:
+                            # For bootstrap_prob mode, also add edge weights if available
+                            if test_mode == "bootstrap_prob" and result["W"] is not None:
+                                weight = result["W"].loc[i, j]
+                                G.add_edge(i, j, weight=weight)
+                            else:
+                                G.add_edge(i, j)
+                
                 network_list.append((date, G))
         else:
             # Fast scalar fallback (edge i->j if lambda_i > lambda_j)
@@ -191,9 +247,20 @@ def main():
     centralities = []
     for date, G in network_list:
         cent = compute_graph_centralities(G)
-        flat = {f"{asset}_{metric}": val
-                for metric, asset_dict in cent.items()
-                for asset, val in asset_dict.items()}
+        
+        # Handle empty networks by creating zero centralities for all assets
+        if not cent:  # Empty network
+            # Get asset names from returns data
+            assets = ret_log.columns.tolist()
+            flat = {}
+            for asset in assets:
+                for metric in ["indegree", "outdegree", "pagerank", "eigenvector"]:
+                    flat[f"{asset}_{metric}"] = 0.0
+        else:
+            flat = {f"{asset}_{metric}": val
+                    for asset, metrics_dict in cent.items()
+                    for metric, val in metrics_dict.items()}
+        
         # force tz-naive date for alignment with returns
         d = pd.Timestamp(date)
         if d.tzinfo is not None:
@@ -215,9 +282,13 @@ def main():
 
     # --- 5. Factor construction ---
     from analysis.factor import build_HL_factor
+    
+    # Slice returns to match centrality dates for factor construction
+    returns_for_factor = returns.loc[returns.index.intersection(centrality_df.index)].sort_index()
+    
     factor_series = build_HL_factor(
         centrality_df=centrality_df,
-        returns_df=returns,
+        returns_df=returns_for_factor,
         metric=cfg["centrality_metric"],
         top_n=cfg["factor_high"],
         bottom_n=cfg["factor_low"],
@@ -231,10 +302,10 @@ def main():
     run_econ_test(
         factor_path=cfg["factor_output"],
         returns_path=str(sliced_returns_path),
-        out_dir="outputs"
+        out_dir=str(outputs)
     )
 
-    print("[PIPELINE DONE] All outputs saved in 'outputs/'.")
+    print(f"[PIPELINE DONE] All outputs saved in '{outputs}/'.")
 
 if __name__ == "__main__":
     main()

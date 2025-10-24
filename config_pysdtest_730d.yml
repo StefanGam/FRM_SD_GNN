@@ -1,0 +1,67 @@
+# ===============================
+# Runtime mode - PYSDTEST 730-day (2-year) experiment
+# ===============================
+universe: crypto            # currently only 'crypto' is auto-built
+frequency: daily            # options: daily | weekly | monthly
+
+crypto:
+  folder: data/cryptos      # where bitcoin.csv, litecoin.csv, etc. live
+week_ending: SUN            # used only when frequency: weekly (SUN, MON, ..., SAT)
+
+# Direct path to precomputed returns
+returns_path: data/daily_log_returns.csv
+
+# ===============================
+# Data slicing for 730-day (2-year) experiment
+# ===============================
+test_window:
+  last_days: 730            # Use last 730 days of data (2 years)
+
+# ===============================
+# FRM / Quantile-Lasso settings (optimized for 730 days / 2 years)
+# ===============================
+window: 45                  # rolling window length (appropriate for 2-year analysis)
+step: 1                     # advance by 1 day each step
+tau: 0.05                   # quantile for λ
+lambda_grid: [0.1, 0.5, 1.0, 1.5] # expanded grid for longer period
+n_folds: 3                  # cross-validation folds inside FRM
+n_jobs: 4                   # parallelism
+
+# ===============================
+# SD / Network Factor settings - PYSDTEST focus
+# ===============================
+centrality_metric: eigenvector   # eigenvector | pagerank | indegree | outdegree
+factor_high: 2                   # top-K assets for long leg
+factor_low: 2                    # bottom-K assets for short leg
+factor_output: outputs/pysdtest_730d/NetworkRisk_daily.csv   # PYSDTEST output path
+
+sd:
+  method: distributional            # "scalar" for simple dominance; "distributional" for full SD tests
+  order: 1                  # SD order (1 for speed)
+  lookback: 30             # how many λ-days form the empirical distribution (increased for 730d)
+  alpha: 0.1               # significance level
+  mht: fdr_bh               # multiple testing correction (none | fdr_bh)
+  pval: perm                # permutation ("perm") or one-sided KS ("ks", SD1 only)
+  perm_B: 300              # bootstrap repetitions (increased for 2-year robustness)
+  
+  # Advanced SD test modes (when method: distributional)
+  test_mode: pysdtest      # STATISTICAL HYPOTHESIS TESTING FOCUS
+  
+  # Parameters for specific modes
+  epsilon: 0.01             # tolerance for epsilon mode (allow small violations)
+  alpha_tail: 0.20          # tail modes: focus on worst/best X% of outcomes
+  keep_threshold: 0.60      # bootstrap_prob mode: edge if Pr(dominance) >= threshold
+  
+  # Bootstrap probability mode settings
+  bootstrap_B: 300          # increased for 730-day robustness
+  block_len: 15             # stationary bootstrap block length for time dependence
+  
+  # Enhanced grid and resampling options
+  ngrid: 150                # increased grid points for precision (2-year data)
+  resampling: bootstrap     # bootstrap | subsampling | paired bootstrap | stationary_bootstrap
+  random_state: 42          # seed for reproducible bootstrap results
+
+# ===============================
+# Output configuration
+# ===============================
+out_dir: outputs/pysdtest_730d      # Dedicated output directory

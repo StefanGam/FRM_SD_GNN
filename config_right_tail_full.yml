@@ -1,0 +1,67 @@
+# ===============================
+# Runtime mode - RIGHT_TAIL FULL DATASET experiment
+# ===============================
+universe: crypto            # currently only 'crypto' is auto-built
+frequency: daily            # options: daily | weekly | monthly
+
+crypto:
+  folder: data/cryptos      # where bitcoin.csv, litecoin.csv, etc. live
+week_ending: SUN            # used only when frequency: weekly (SUN, MON, ..., SAT)
+
+# Direct path to precomputed returns
+returns_path: data/daily_log_returns.csv
+
+# ===============================
+# NO data slicing - use ALL available data
+# ===============================
+# test_window: {}            # Commented out to use full dataset
+
+# ===============================
+# FRM / Quantile-Lasso settings (optimized for full dataset ~6+ years)
+# ===============================
+window: 60                  # rolling window length (robust for full dataset)
+step: 1                     # advance by 1 day each step
+tau: 0.05                   # quantile for λ
+lambda_grid: [0.1, 0.3, 0.5, 0.8, 1.0, 1.5] # comprehensive grid for full dataset
+n_folds: 3                  # cross-validation folds inside FRM
+n_jobs: 4                   # parallelism
+
+# ===============================
+# SD / Network Factor settings - RIGHT_TAIL focus
+# ===============================
+centrality_metric: eigenvector   # eigenvector | pagerank | indegree | outdegree
+factor_high: 2                   # top-K assets for long leg
+factor_low: 2                    # bottom-K assets for short leg
+factor_output: outputs/right_tail_full/NetworkRisk_daily.csv   # RIGHT_TAIL FULL output path
+
+sd:
+  method: distributional            # "scalar" for simple dominance; "distributional" for full SD tests
+  order: 1                  # SD order (1 for speed)
+  lookback: 45             # how many λ-days form the empirical distribution (robust for full dataset)
+  alpha: 0.1               # significance level
+  mht: fdr_bh               # multiple testing correction (none | fdr_bh)
+  pval: perm                # permutation ("perm") or one-sided KS ("ks", SD1 only)
+  perm_B: 150              # reduced for speed on large dataset
+  
+  # Advanced SD test modes (when method: distributional)
+  test_mode: right_tail    # HIGH SYSTEMIC RISK FOCUS
+  
+  # Parameters for specific modes
+  epsilon: 0.01             # tolerance for epsilon mode (allow small violations)
+  alpha_tail: 0.20          # tail modes: focus on worst/best X% of outcomes
+                            # right_tail = top 20% (high λ = high systemic risk)
+  keep_threshold: 0.60      # bootstrap_prob mode: edge if Pr(dominance) >= threshold
+  
+  # Bootstrap probability mode settings
+  bootstrap_B: 150          # reduced for speed on large dataset
+  block_len: 20             # stationary bootstrap block length for time dependence
+  
+  # Enhanced grid and resampling options
+  ngrid: 100                # balanced grid points for full dataset
+  resampling: bootstrap     # bootstrap | subsampling | paired bootstrap | stationary_bootstrap
+  random_state: 42          # seed for reproducible bootstrap results
+
+# ===============================
+# Output configuration
+# ===============================
+out_dir: outputs/right_tail_full    # Dedicated output directory for full dataset

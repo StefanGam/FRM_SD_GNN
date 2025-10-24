@@ -8,6 +8,11 @@ import pandas as pd
 import networkx as nx
 
 def compute_graph_centralities(G: nx.DiGraph) -> dict:
+    # Handle empty graphs by returning zero centralities for all assets
+    if G.number_of_nodes() == 0 or G.number_of_edges() == 0:
+        # Return empty dict - caller should handle this case
+        return {}
+    
     indegree  = dict(G.in_degree())
     outdegree = dict(G.out_degree())
     pagerank  = nx.pagerank(G)

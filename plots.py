@@ -17,7 +17,7 @@ plt.savefig("outputs/plot_frm_index.png")
 plt.close()
 
 # ---- 2. NetworkRisk factor over time ----
-networkrisk = pd.read_csv("outputs/NetworkRisk.csv", index_col=0, parse_dates=True).squeeze("columns")
+networkrisk = pd.read_csv("outputs/NetworkRisk_daily.csv", index_col=0, parse_dates=True).squeeze("columns")
 plt.figure(figsize=(10,4))
 plt.plot(networkrisk)
 plt.title("NetworkRisk Factor (High-Low Spread) Over Time")
@@ -38,7 +38,7 @@ mean_eig = eig_matrix.mean(axis=0)
 high_assets = mean_eig.sort_values(ascending=False).head(3).index.tolist()
 low_assets = mean_eig.sort_values(ascending=True).head(3).index.tolist()
 
-returns = pd.read_csv("data/monthly_log_returns.csv", index_col=0, parse_dates=True)
+returns = pd.read_csv("outputs/returns_sliced.csv", index_col=0, parse_dates=True)
 cum_high = (1 + returns[high_assets].mean(axis=1)).cumprod()
 cum_low = (1 + returns[low_assets].mean(axis=1)).cumprod()
 cum_hl = cum_high / cum_low

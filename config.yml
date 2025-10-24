@@ -18,12 +18,12 @@ returns_path: data/daily_log_returns.csv
 # ===============================
 # FRM / Quantile-Lasso settings
 # ===============================
-window: 30                  # rolling window length (63 ≈ 3 months of daily data)
+window: 20                  # rolling window length (realistic for 90 days)
 step: 1                     # advance by 1 day each step
 tau: 0.05                   # quantile for λ
-lambda_grid: [0.1, 0.2, 0.5, 1.0]
+lambda_grid: [0.1, 0.5, 1.0] # moderate grid
 n_folds: 2                  # cross-validation folds inside FRM
-n_jobs: 8                   # parallelism (CLI --n_jobs can override)
+n_jobs: 4                   # parallelism
 
 # ===============================
 # SD / Network Factor settings
@@ -35,12 +35,31 @@ factor_output: outputs/NetworkRisk_daily.csv   # output path for H–L factor se
 
 sd:
   method: distributional            # "scalar" for simple dominance; "distributional" for full SD tests
-  order: 1                  # SD order (1 or 2) if distributional
-  lookback: 30             # how many λ-days form the empirical distribution
-  alpha: 0.05               # significance level
+  order: 1                  # SD order (1 for speed)
+  lookback: 15             # how many λ-days form the empirical distribution
+  alpha: 0.1               # significance level
   mht: fdr_bh               # multiple testing correction (none | fdr_bh)
   pval: perm                # permutation ("perm") or one-sided KS ("ks", SD1 only)
-  perm_B: 50               # bootstrap/permutation repetitions - 50–100 for dev; 1000+ for paper runs
+  perm_B: 100              # bootstrap repetitions
+  
+  # Advanced SD test modes (when method: distributional)
+  test_mode: right_tail    # START WITH: strict | pysdtest | epsilon | left_tail | right_tail | bootstrap_prob
+  
+  # Parameters for specific modes
+  epsilon: 0.01             # tolerance for epsilon mode (allow small violations)
+  alpha_tail: 0.20          # tail modes: focus on worst/best X% of outcomes
+                            # left_tail = worst X% (low λ = low systemic risk)
+                            # right_tail = best X% (high λ = high systemic risk)
+  keep_threshold: 0.60      # bootstrap_prob mode: edge if Pr(dominance) >= threshold
+  
+  # Bootstrap probability mode settings
+  bootstrap_B: 100          # reduced for speed
+  block_len: 5              # stationary bootstrap block length for time dependence
+  
+  # Enhanced grid and resampling options
+  ngrid: 50                 # reduced grid points for speed
+  resampling: bootstrap     # bootstrap | subsampling | paired bootstrap | stationary_bootstrap
+  random_state: 42          # seed for reproducible bootstrap results
 
 # ===============================
 # Fast-test time window (optional)
@@ -48,9 +67,9 @@ sd:
 test_window:
   # Choose exactly ONE of the following approaches:
   # 1) Keep only the last N rows (daily or weekly):
-  last_days: 90             # use when frequency: daily
+  last_days: 90             # use when frequency: daily (test with more data)
   # last_weeks: 8           # use when frequency: weekly
 
   # 2) Explicit calendar range (works for any frequency, incl. monthly):
-  # start: 2025-08-01
-  # end:   2025-10-01
+  # start: 2023-03-10
+  # end:   2023-03-15

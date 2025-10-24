@@ -14,7 +14,16 @@ def run_econ_test(
     factor = pd.read_csv(factor_path, index_col=0, parse_dates=True).squeeze("columns")
     returns = pd.read_csv(returns_path, index_col=0, parse_dates=True)
 
-    # Align on common dates
+    # Remove NaN values from factor first (due to lookback window)
+    factor = factor.dropna()
+    
+    # Handle timezone differences - make both timezone-naive for alignment
+    if hasattr(factor.index, 'tz') and factor.index.tz is not None:
+        factor.index = factor.index.tz_localize(None)
+    if hasattr(returns.index, 'tz') and returns.index.tz is not None:
+        returns.index = returns.index.tz_localize(None)
+    
+    # Align on common dates (only where factor is available)
     common_dates = factor.index.intersection(returns.index)
     factor = factor.loc[common_dates]
     returns = returns.loc[common_dates]
@@ -72,11 +81,19 @@ def run_econ_test(
     results = []
     for col in returns.columns:
         y = returns[col].dropna()
+        # Align factor with available return data
         x = factor.loc[y.index]
+        
+        # Double-check: remove any remaining NaN pairs
+        valid_idx = ~(x.isna() | y.isna())
+        x = x[valid_idx]
+        y = y[valid_idx]
+        
         # Drop if not enough data
         if len(y) < 10:
             results.append({"Asset": col, "Beta": np.nan, "t-stat": np.nan, "p-value": np.nan, "N": len(y)})
             continue
+            
         x_ = np.vstack([np.ones_like(x), x]).T  # columns: [const, factor]
         try:
             alpha, beta = np.linalg.lstsq(x_, y, rcond=None)[0]  # <- alpha first, beta second
